@@ -4,10 +4,12 @@ __all__ = ['Lagrange1D']
 import numbers
 
 from abc import ABCMeta, abstractmethod
-from numbers import Number
 from typing import List, Optional, Tuple, Union
 
-from sympy import Expr, Number, prod, Symbol
+from sympy.core.expr import Expr
+from sympy.core.mul import prod
+from sympy.core.numbers import Number, Zero
+from sympy.core.symbol import Symbol
 
 
 NumberLike = Union[numbers.Number, Expr]
@@ -16,10 +18,10 @@ NumberLike = Union[numbers.Number, Expr]
 class BaseInterpolation1DMethod(metaclass=ABCMeta):
     '''
     - abstract method:
-        - add: 添加
-        - expression
-        - interpolate
-        - update
+        - add：添加拟合数据
+        - expression：拟合公式的表达式
+        - interpolate：对指定数据进行插值
+        - update：更新拟合公式
     '''
     def __init__(
         self,
@@ -95,7 +97,7 @@ class Lagrange1D(BaseInterpolation1DMethod):
 
     def update(self):
         self._f = sum(
-            y*self._lagrange(ith) for ith, y in enumerate(self._ys)
+            (y*self._lagrange(ith) for ith, y in enumerate(self._ys)), Zero()
         ).simplify()
         return self
 
