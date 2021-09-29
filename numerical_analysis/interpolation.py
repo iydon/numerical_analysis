@@ -4,7 +4,7 @@ __all__ = ['Lagrange1D', 'NewtonBackward1D', 'NewtonForward1D']
 import numbers
 
 from abc import ABCMeta, abstractmethod
-from typing import List, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union
 
 from sympy.core.expr import Expr
 from sympy.core.function import Function
@@ -56,6 +56,9 @@ class Wrapper:
         self._expression = None
         self._i.add(data)
         return self
+
+    def attr(self, name: str, *args, **kwargs) -> Any:
+        return getattr(self._i, name)(*args, **kwargs)
 
     def interpolate(self, *xs: List[NumberLike]) -> List[Expr]:
         return self._i.interpolate(xs)  # list(xs)
@@ -180,6 +183,15 @@ class NewtonBackward1D(BaseInterpolation1DMethod):
             self._f += self._fs[-current_number+ith][0] * self._x
             self._x *= self._ - x
 
+    def table(self, precision=5):  # divided_difference_table
+        length = len(self._fs)
+        for ith in range(length):
+            print('|', end=' ')
+            for jth in range(ith+1):
+                number = str(round(self._fs[jth][jth-ith-1], precision))
+                print(number[:precision], end=' | ')
+            print()
+
 
 class NewtonForward1D(BaseInterpolation1DMethod):
     def expression(self, name='x'):
@@ -215,3 +227,4 @@ if __name__ == '__main__':
         ]
     ).wrap()
     print(i[0.596])
+    i.attr('table')
