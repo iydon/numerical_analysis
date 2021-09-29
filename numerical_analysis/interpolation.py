@@ -1,4 +1,4 @@
-__all__ = ['Lagrange1D', 'Newton1D']
+__all__ = ['Lagrange1D', 'NewtonBackward1D', 'NewtonForward1D']
 
 
 import numbers
@@ -11,6 +11,7 @@ from sympy.core.function import Function
 from sympy.core.mul import prod
 from sympy.core.numbers import Number, Zero
 from sympy.core.symbol import Symbol
+from sympy.functions.combinatorial.factorials import factorial
 
 
 NumberLike = Union[numbers.Number, Expr]
@@ -145,7 +146,42 @@ class Lagrange1D(BaseInterpolation1DMethod):
         )
 
 
-class Newton1D(BaseInterpolation1DMethod):
+class NewtonBackward1D(BaseInterpolation1DMethod):
+    def expression(self, name='x'):
+        return self._f.subs(self._, name)
+
+    def init(self):
+        self._x = self._f = self._fs = None
+
+    def interpolate(self, xs):
+        return [self._f.subs(self._, x) for x in xs]
+
+    def remainder(self, f, x, name='ε'):
+        n = len(self._xs)
+        return f.diff(x, n).subs(x, name) * \
+            self._x.subs(self._, x) / factorial(n)
+
+    def update(self, xs, ys):
+        # 设置初始差商表
+        if self._fs is None:
+            (x, *xs), (y, *ys) = xs, ys
+            self._x, self._f, self._fs = self._-x, y, [[y]]
+        # 计算差商表
+        total_number, current_number = len(self._xs), len(xs)
+        self._fs += [list() for _ in range(current_number)]
+        self._fs[0] += list(ys)
+        for ith, (pf, cf) in enumerate(zip(self._fs[:-1], self._fs[1:]), start=1):
+            self._fs[ith] += [
+                (pf[-jth-1]-pf[-jth-2]) / (self._xs[-jth-1]-self._xs[-jth-ith-1])
+                for jth in range(total_number-len(cf)-ith)
+            ][::-1]
+        # 根据差商表计算插值表达式
+        for ith, x in enumerate(xs):
+            self._f += self._fs[-current_number+ith][0] * self._x
+            self._x *= self._ - x
+
+
+class NewtonForward1D(BaseInterpolation1DMethod):
     def expression(self, name='x'):
         raise NotImplementedError
 
@@ -171,3 +207,11 @@ if __name__ == '__main__':
         i = Lagrange1D([(x0, f.subs(x, x0)) for x0 in xs]).wrap()
         remainder = i.remainder(f).subs(x, 0.3367)
         print(f'|{i[0.3367]}-{f.subs(x, 0.3367)}|≤{remainder}')
+
+    i = NewtonBackward1D(
+        [
+            (0.4, 0.41075), (0.55, 0.57815), (0.65, 0.69675),
+            (0.8, 0.88811), (0.9, 1.02652), (1.05, 1.25382),
+        ]
+    ).wrap()
+    print(i[0.596])
