@@ -7,6 +7,7 @@ from abc import ABCMeta, abstractmethod
 from typing import List, Optional, Tuple, Union
 
 from sympy.core.expr import Expr
+from sympy.core.function import Function
 from sympy.core.mul import prod
 from sympy.core.numbers import Number, Zero
 from sympy.core.symbol import Symbol
@@ -21,6 +22,7 @@ class BaseInterpolation1DMethod(metaclass=ABCMeta):
         - add：添加拟合数据
         - expression：拟合公式的表达式
         - interpolate：对指定数据进行插值
+        - remainder：余项
         - update：更新拟合公式
     '''
     def __init__(
@@ -72,6 +74,12 @@ class BaseInterpolation1DMethod(metaclass=ABCMeta):
         pass
 
     @abstractmethod
+    def remainder(
+        self, f: Function, x: Optional[Symbol] = None, name: str = 'ε'
+    ) -> Expr:
+        pass
+
+    @abstractmethod
     def update(self) -> 'BaseInterpolation1DMethod':
         pass
 
@@ -95,10 +103,15 @@ class Lagrange1D(BaseInterpolation1DMethod):
     def interpolate(self, xs):
         return [self._f.subs(self._, x) for x in xs]
 
+    def remainder(self, f, x=None, name='ε'):
+        x = x or f.args[0]  # assert len(f.args)==1
+        return f.diff(x, len(self._xs)).subs(x, name) * \
+            prod((x-xk)/(i+1) for i, xk in enumerate(self._xs))
+
     def update(self):
         self._f = sum(
             (y*self._lagrange(ith) for ith, y in enumerate(self._ys)), Zero()
-        ).simplify()
+        )  # .simplify()
         return self
 
     def _lagrange(self, kth: int) -> NumberLike:
@@ -110,14 +123,12 @@ class Lagrange1D(BaseInterpolation1DMethod):
 
 
 if __name__ == '__main__':
-    from sympy import symbols
+    from sympy import symbols, sin
+    from sympy.abc import x
 
 
-    i1 = Lagrange1D([(1, 2), (2, 5), (3, 10), (4, 17)])
-    print(i1)
-    print(i1[0], i1(1, 2, 3), i1.interpolate([1, 2, 3]))
-
-    xs, ys = symbols(('x(:2)', 'y(:2)'))
-    i2 = Lagrange1D(tuple(zip(xs, ys)))
-    print(i2)
-    print(i2[0])
+    f = sin(x)
+    for xs in ((0.32, 0.34, 0.36), symbols('x:3')):
+        i = Lagrange1D([(x0, f.subs(x, x0)) for x0 in xs])
+        remainder = i.remainder(f).subs(x, 0.3367)
+        print(f'|{i[0.3367]}-{f.subs(x, 0.3367)}|≤{remainder}')
