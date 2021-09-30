@@ -4,7 +4,7 @@ __all__ = ['Lagrange1D', 'NewtonBackward1D', 'NewtonForward1D']
 import numbers
 
 from abc import ABCMeta, abstractmethod
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, Callable, List, Optional, Tuple, Union
 
 from sympy.core.expr import Expr
 from sympy.core.function import Function
@@ -58,7 +58,10 @@ class Wrapper:
         return self
 
     def attr(self, name: str, *args, **kwargs) -> Any:
-        return getattr(self._i, name)(*args, **kwargs)
+        attr = getattr(self._i, name)
+        if isinstance(attr, Callable):
+            attr = attr(*args, **kwargs)
+        return attr
 
     def interpolate(self, *xs: List[NumberLike]) -> List[Expr]:
         return self._i.interpolate(xs)  # list(xs)
@@ -173,7 +176,9 @@ class NewtonBackward1D(BaseInterpolation1DMethod):
         total_number, current_number = len(self._xs), len(xs)
         self._fs += [list() for _ in range(current_number)]
         self._fs[0] += list(ys)
-        for ith, (pf, cf) in enumerate(zip(self._fs[:-1], self._fs[1:]), start=1):
+        # for ith, (pf, cf) in enumerate(zip(self._fs[:-1], self._fs[1:]), start=1):
+        for ith in range(1, total_number):
+            pf, cf = self._fs[ith-1], self._fs[ith]
             self._fs[ith] += [
                 (pf[-jth-1]-pf[-jth-2]) / (self._xs[-jth-1]-self._xs[-jth-ith-1])
                 for jth in range(total_number-len(cf)-ith)
@@ -183,31 +188,45 @@ class NewtonBackward1D(BaseInterpolation1DMethod):
             self._f += self._fs[-current_number+ith][0] * self._x
             self._x *= self._ - x
 
-    def table(self, precision=5):  # divided_difference_table
+    def table(self, precision=5, width=10):  # divided_difference_table
         length = len(self._fs)
         for ith in range(length):
             print('|', end=' ')
             for jth in range(ith+1):
-                number = str(round(self._fs[jth][jth-ith-1], precision))
-                print(number[:precision], end=' | ')
+                number = round(float(self._fs[jth][ith-jth]), precision)
+                print(f'{number: >{width}}', end=' | ')
             print()
 
 
-class NewtonForward1D(BaseInterpolation1DMethod):
-    def expression(self, name='x'):
-        raise NotImplementedError
-
-    def init(self):
-        raise NotImplementedError
-
-    def interpolate(self, xs):
-        raise NotImplementedError
-
-    def remainder(self, f, x, name='ε'):
-        raise NotImplementedError
-
+class NewtonForward1D(NewtonBackward1D):
     def update(self, xs, ys):
-        raise NotImplementedError
+        # 设置初始差商表
+        if self._fs is None:
+            (*xs, x), (*ys, y) = xs, ys
+            self._x, self._f, self._fs = self._-x, y, [[y]]
+        # 计算差商表
+        total_number, current_number = len(self._xs), len(xs)
+        self._fs += [list() for _ in range(current_number)]
+        self._fs[0] = list(ys) + self._fs[0]
+        for ith in range(1, total_number):
+            pf, cf = self._fs[ith-1], self._fs[ith]
+            self._fs[ith] = [
+                (pf[-jth-1]-pf[-jth-2]) / (self._xs[-jth-1]-self._xs[-jth-ith-1])
+                for jth in range(total_number-len(cf)-ith)
+            ][::-1] + self._fs[ith]
+        # 根据差商表计算插值表达式
+        for ith, x in enumerate(reversed(xs)):
+            self._f += self._fs[-current_number+ith][-1] * self._x
+            self._x *= self._ - x
+
+    def table(self, precision=5, width=10):  # divided_difference_table
+        length = len(self._fs)
+        for ith in range(length-1, -1, -1):
+            print('|', end=' ')
+            for jth in range(ith+1):
+                number = round(float(self._fs[jth][jth-ith-1]), precision)
+                print(f'{number: >{width}}', end=' | ')
+            print()
 
 
 if __name__ == '__main__':
@@ -220,11 +239,12 @@ if __name__ == '__main__':
         remainder = i.remainder(f).subs(x, 0.3367)
         print(f'|{i[0.3367]}-{f.subs(x, 0.3367)}|≤{remainder}')
 
-    i = NewtonBackward1D(
-        [
-            (0.4, 0.41075), (0.55, 0.57815), (0.65, 0.69675),
-            (0.8, 0.88811), (0.9, 1.02652), (1.05, 1.25382),
-        ]
-    ).wrap()
-    print(i[0.596])
-    i.attr('table')
+    for newton in (NewtonBackward1D, NewtonForward1D):
+        i = newton(
+            [
+                (0.4, 0.41075), (0.55, 0.57815), (0.65, 0.69675),
+                (0.8, 0.88811), (0.9, 1.02652), (1.05, 1.25382),
+            ]
+        ).wrap()
+        print(newton.__name__, i[0.596])
+        i.attr('table')
