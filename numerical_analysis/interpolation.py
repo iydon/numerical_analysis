@@ -1,4 +1,4 @@
-__all__ = ['Lagrange1D', 'NewtonBackward1D', 'NewtonForward1D']
+__all__ = ['Lagrange1D', 'NewtonBackward1D', 'NewtonForward1D', 'Hermite1D']
 
 
 import numbers
@@ -9,12 +9,14 @@ from typing import Any, Callable, List, Optional, Tuple, Union
 from sympy.core.expr import Expr
 from sympy.core.function import Function
 from sympy.core.mul import prod
-from sympy.core.numbers import Number, Zero
+from sympy.core.numbers import Number, One, Zero
 from sympy.core.symbol import Symbol
 from sympy.functions.combinatorial.factorials import factorial
 
 
 NumberLike = Union[numbers.Number, Expr]
+
+one, zero = One(), Zero()
 
 
 class Wrapper:
@@ -130,7 +132,7 @@ class Lagrange1D(BaseInterpolation1DMethod):
         return self._f.subs(self._, name)
 
     def init(self):
-        self._f = Zero()
+        self._f = zero
 
     def interpolate(self, xs):
         return [self._f.subs(self._, x) for x in xs]
@@ -141,7 +143,7 @@ class Lagrange1D(BaseInterpolation1DMethod):
 
     def update(self, *_):  # 每次重新计算拟合公式
         self._f = sum(
-            (y*self._lagrange(ith) for ith, y in enumerate(self._ys)), Zero()
+            (y*self._lagrange(ith) for ith, y in enumerate(self._ys)), zero
         )  # .simplify()
 
     def _lagrange(self, kth: int) -> NumberLike:
@@ -229,8 +231,41 @@ class NewtonForward1D(NewtonBackward1D):
             print()
 
 
+class Hermite1D(Lagrange1D):
+    def add(
+        self,
+        data: List[Tuple[NumberLike, Tuple[NumberLike, NumberLike]]],
+    ) -> None:
+        xs, ys = zip(*data)
+        assert all(isinstance(y, tuple) and len(y)==2 for y in ys)
+        self._xs += xs
+        self._ys += ys
+        self.update(xs, ys)
+
+    def remainder(self, f, x, name='ε'):
+        return f.diff(x, 2*len(self._xs)).subs(x, name) * \
+            prod((x-xk)**2/(2*i+1)/(2*i+2) for i, xk in enumerate(self._xs))
+
+    def update(self, *_):  # 每次重新计算拟合公式
+        self._f = sum(
+            (y*self._alphaL(ith)+m*self._betaL(ith)) * self._lagrange(ith)**2
+            for ith, (y, m) in enumerate(self._ys)
+        )  # .simplify()
+
+    def _alphaL(self, jth: int) -> NumberLike:
+        # assert 0 <= jth < len(self._xs)
+        return 1 - 2*(self._-self._xs[jth])*sum(
+            one / (self._xs[jth]-x)
+            for ith, x in enumerate(self._xs) if ith!=jth
+        )
+
+    def _betaL(self, jth: int) -> NumberLike:
+        # assert 0 <= jth < len(self._xs)
+        return self._ - self._xs[jth]
+
+
 if __name__ == '__main__':
-    from sympy import symbols, sin
+    from sympy import symbols, sin, cos
     from sympy.abc import x
 
     f = sin(x)
@@ -248,3 +283,12 @@ if __name__ == '__main__':
         ).wrap()
         print(newton.__name__, i[0.596])
         i.attr('table')
+
+    f, df = sin(x), cos(x)
+    i = Hermite1D(
+        [
+            (x0, (f.subs(x, x0), df.subs(x, x0)))
+            for x0 in (0.32, 0.34, 0.36)
+        ]
+    ).wrap()
+    print(i.expression.simplify())
