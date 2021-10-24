@@ -12,6 +12,7 @@ from sympy.core.mul import prod
 from sympy.core.numbers import Number, One, Zero
 from sympy.core.symbol import Symbol
 from sympy.functions.combinatorial.factorials import factorial
+from sympy.functions.special.bsplines import interpolating_spline
 
 
 NumberLike = Union[numbers.Number, Expr]
@@ -267,6 +268,10 @@ class Hermite(Lagrange):
 
 
 class PiecewiseLinearInterpolation(BaseInterpolation1DMethod):
+    '''
+    - TODO:
+        - `from sympy import Piecewise`
+    '''
     def expression(self, name: str = 'x') -> Dict[Tuple[Number, Number], Expr]:
         return {
             key: value.expression(name) for key, value in self._fs.items()
@@ -319,6 +324,20 @@ class PiecewiseHermite(PiecewiseLinearInterpolation):
             )
 
 
+class Spline(Lagrange):
+    '''
+    - TODO
+        - re-write `interpolating_spline`
+    '''
+    def remainder(self, f, x, name='ε'):
+        raise NotImplementedError
+
+    def update(self, *_) -> None:
+        data = dict(zip(self._xs, self._ys))
+        keys = sorted(data)
+        values = [data[key] for key in keys]
+        self._f = interpolating_spline(3, self._, keys, values)
+
 
 if __name__ == '__main__':
     from sympy import symbols, sin, cos
@@ -362,3 +381,10 @@ if __name__ == '__main__':
         ]
     ).wrap()
     print(i.expression, i.remainder(x**2+1))
+
+    i = Spline(
+        [
+            (5, 26), (4, 17), (3, 10), (2, 5), (1, 2),
+        ]
+    ).wrap()
+    print(i.expression)
