@@ -1,10 +1,10 @@
-__all__ = ['Lagrange1D', 'NewtonBackward1D', 'NewtonForward1D', 'Hermite1D']
+__all__ = ['Lagrange', 'NewtonBackward', 'NewtonForward', 'Hermite']
 
 
 import numbers
 
 from abc import ABCMeta, abstractmethod
-from typing import Any, Callable, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from sympy.core.expr import Expr
 from sympy.core.function import Function
@@ -69,7 +69,7 @@ class Wrapper:
         return self._i.interpolate(xs)  # list(xs)
 
     def remainder(self, f: Function, x: Optional[Symbol] = None):
-        x = x or f.args[0]  # assert len(f.args)==1
+        x = x or f.args[0]  # len(f.args)==1
         return self._i.remainder(f, x or f.args[0], self._epsilon)
 
 
@@ -101,6 +101,7 @@ class BaseInterpolation1DMethod(metaclass=ABCMeta):
         xs, ys = (tuple(map(f, x)) for x in zip(*data))
         self._xs += xs
         self._ys += ys
+        assert len(self._xs)==len(set(self._xs))
         self.update(xs, ys)
 
     def wrap(self, *args, **kwargs) -> Wrapper:
@@ -127,7 +128,7 @@ class BaseInterpolation1DMethod(metaclass=ABCMeta):
         pass
 
 
-class Lagrange1D(BaseInterpolation1DMethod):
+class Lagrange(BaseInterpolation1DMethod):
     def expression(self, name='x'):
         return self._f.subs(self._, name)
 
@@ -147,14 +148,14 @@ class Lagrange1D(BaseInterpolation1DMethod):
         )  # .simplify()
 
     def _lagrange(self, kth: int) -> NumberLike:
-        # assert 0 <= kth < len(self._xs)
+        assert 0 <= kth < len(self._xs)
         return prod(
             (self._-x) / (self._xs[kth]-x)
             for ith, x in enumerate(self._xs) if ith!=kth
         )
 
 
-class NewtonBackward1D(BaseInterpolation1DMethod):
+class NewtonBackward(BaseInterpolation1DMethod):
     def expression(self, name='x'):
         return self._f.subs(self._, name)
 
@@ -200,7 +201,7 @@ class NewtonBackward1D(BaseInterpolation1DMethod):
             print()
 
 
-class NewtonForward1D(NewtonBackward1D):
+class NewtonForward(NewtonBackward):
     def update(self, xs, ys):
         # 设置初始差商表
         if self._fs is None:
@@ -231,7 +232,7 @@ class NewtonForward1D(NewtonBackward1D):
             print()
 
 
-class Hermite1D(Lagrange1D):
+class Hermite(Lagrange):
     def add(
         self,
         data: List[Tuple[NumberLike, Tuple[NumberLike, NumberLike]]],
@@ -253,15 +254,51 @@ class Hermite1D(Lagrange1D):
         )  # .simplify()
 
     def _alphaL(self, jth: int) -> NumberLike:
-        # assert 0 <= jth < len(self._xs)
+        assert 0 <= jth < len(self._xs)
         return 1 - 2*(self._-self._xs[jth])*sum(
             one / (self._xs[jth]-x)
             for ith, x in enumerate(self._xs) if ith!=jth
         )
 
     def _betaL(self, jth: int) -> NumberLike:
-        # assert 0 <= jth < len(self._xs)
+        0 <= jth < len(self._xs)
         return self._ - self._xs[jth]
+
+
+class PiecewiseLinearInterpolation(BaseInterpolation1DMethod):
+    def expression(self, name: str = 'x') -> Dict[Tuple[Number, Number], Expr]:
+        return {
+            key: value.expression(name) for key, value in self._fs.items()
+        }
+
+    def init(self) -> None:
+        self._fs: Dict[Tuple[Number, Number], BaseInterpolation1DMethod] = dict()
+
+    def interpolate(self, xs: List[Number]) -> List[Expr]:
+        return [self._which(x).interpolate([x])[0] for x in xs]
+
+    def remainder(
+        self,
+        f: Function, x: Symbol, name: str = 'ε',
+    ) -> Dict[Tuple[Number, Number], Expr]:
+        return {
+            key: value.remainder(f, x, name) for key, value in self._fs.items()
+        }
+
+    def update(self, *_: List[Number]) -> None:
+        data = dict(zip(self._xs, self._ys))
+        keys = sorted(data)
+        for left, right in zip(keys[:-1], keys[1:]):
+            self._fs[(left, right)] = Lagrange(
+                [(left, data[left]), (right, data[right])]
+            )
+
+    def _which(self, x: Number) -> BaseInterpolation1DMethod:
+        for (left, right), interpolation in self._fs.items():
+            if left <= x <= right:
+                return interpolation
+        raise NotImplementedError
+
 
 
 if __name__ == '__main__':
@@ -270,11 +307,11 @@ if __name__ == '__main__':
 
     f = sin(x)
     for xs in ((0.32, 0.34, 0.36), symbols('x:3')):
-        i = Lagrange1D([(x0, f.subs(x, x0)) for x0 in xs]).wrap()
+        i = Lagrange([(x0, f.subs(x, x0)) for x0 in xs]).wrap()
         remainder = i.remainder(f).subs(x, 0.3367)
         print(f'|{i[0.3367]}-{f.subs(x, 0.3367)}|≤{remainder}')
 
-    for newton in (NewtonBackward1D, NewtonForward1D):
+    for newton in (NewtonBackward, NewtonForward):
         i = newton(
             [
                 (0.4, 0.41075), (0.55, 0.57815), (0.65, 0.69675),
@@ -285,10 +322,17 @@ if __name__ == '__main__':
         i.attr('table')
 
     f, df = sin(x), cos(x)
-    i = Hermite1D(
+    i = Hermite(
         [
             (x0, (f.subs(x, x0), df.subs(x, x0)))
             for x0 in (0.32, 0.34, 0.36)
         ]
     ).wrap()
     print(i.expression.simplify())
+
+    i = PiecewiseLinearInterpolation(
+        [
+            (5, 26), (4, 17), (3, 10), (2, 5), (1, 2),
+        ]
+    ).wrap()
+    print(i.expression)
