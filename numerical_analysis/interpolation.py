@@ -1,4 +1,7 @@
-__all__ = ['Lagrange', 'NewtonBackward', 'NewtonForward', 'Hermite']
+__all__ = [
+    'Lagrange', 'NewtonBackward', 'NewtonForward', 'Hermite',
+    'PiecewiseLinearInterpolation', 'PiecewiseHermite', 'Spline',
+]
 
 
 import numbers
@@ -37,6 +40,11 @@ class Wrapper:
     def __setitem__(self, x: NumberLike, y: NumberLike) -> None:
         self.add([(x, y)])
 
+    def __delitem__(self, x: NumberLike) -> None:
+        index = self._i._xs.index(x)
+        self._i._xs = self._i._xs[:index] + self._i._xs[index+1:]
+        self._i._ys = self._i._ys[:index] + self._i._ys[index+1:]
+
     def __repr__(self) -> str:
         name = self._i.__class__.__name__
         return f'<{name}: {self.expression}>'
@@ -49,11 +57,11 @@ class Wrapper:
 
     @property
     def xs(self) -> Tuple[Expr, ...]:
-        return self._xs
+        return self._i._xs
 
     @property
     def ys(self) -> Tuple[Expr, ...]:
-        return self._ys
+        return self._i._ys
 
     def add(self, data: List[Tuple[NumberLike, NumberLike]]) -> 'Wrapper':
         self._expression = None
