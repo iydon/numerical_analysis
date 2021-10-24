@@ -69,8 +69,8 @@ class Wrapper:
         return self._i.interpolate(xs)  # list(xs)
 
     def remainder(self, f: Function, x: Optional[Symbol] = None):
-        x = x or f.args[0]  # len(f.args)==1
-        return self._i.remainder(f, x or f.args[0], self._epsilon)
+        x = x or f.free_symbols.pop()  # len(f.free_symbols)==1
+        return self._i.remainder(f, x, self._epsilon)
 
 
 class BaseInterpolation1DMethod(metaclass=ABCMeta):
@@ -361,4 +361,4 @@ if __name__ == '__main__':
             (1, (2, 2)), (2, (5, 4)), (3, (10, 6)),
         ]
     ).wrap()
-    print(i.expression)
+    print(i.expression, i.remainder(x**2+1))
