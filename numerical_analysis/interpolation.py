@@ -241,6 +241,7 @@ class Hermite(Lagrange):
         assert all(isinstance(y, tuple) and len(y)==2 for y in ys)
         self._xs += xs
         self._ys += ys
+        assert len(self._xs)==len(set(self._xs))
         self.update(xs, ys)
 
     def remainder(self, f, x, name='ε'):
@@ -285,7 +286,7 @@ class PiecewiseLinearInterpolation(BaseInterpolation1DMethod):
             key: value.remainder(f, x, name) for key, value in self._fs.items()
         }
 
-    def update(self, *_: List[Number]) -> None:
+    def update(self, *_) -> None:
         data = dict(zip(self._xs, self._ys))
         keys = sorted(data)
         for left, right in zip(keys[:-1], keys[1:]):
@@ -298,6 +299,24 @@ class PiecewiseLinearInterpolation(BaseInterpolation1DMethod):
             if left <= x <= right:
                 return interpolation
         raise NotImplementedError
+
+
+class PiecewiseHermite(PiecewiseLinearInterpolation):
+    def add(self, data: List[Tuple[Number, Tuple[Number, Number]]]) -> None:
+        xs, ys = zip(*data)
+        assert all(isinstance(y, tuple) and len(y)==2 for y in ys)
+        self._xs += xs
+        self._ys += ys
+        assert len(self._xs)==len(set(self._xs))
+        self.update(xs, ys)
+
+    def update(self, *_) -> None:
+        data = dict(zip(self._xs, self._ys))
+        keys = sorted(data)
+        for left, right in zip(keys[:-1], keys[1:]):
+            self._fs[(left, right)] = Hermite(
+                [(left, data[left]), (right, data[right])]
+            )
 
 
 
@@ -333,6 +352,13 @@ if __name__ == '__main__':
     i = PiecewiseLinearInterpolation(
         [
             (5, 26), (4, 17), (3, 10), (2, 5), (1, 2),
+        ]
+    ).wrap()
+    print(i.expression)
+
+    i = PiecewiseHermite(
+        [
+            (1, (2, 2)), (2, (5, 4)), (3, (10, 6)),
         ]
     ).wrap()
     print(i.expression)
